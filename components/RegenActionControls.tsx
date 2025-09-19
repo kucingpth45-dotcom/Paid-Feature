@@ -1,3 +1,4 @@
+
 import React from 'react';
 
 interface RegenActionControlsProps {
@@ -28,9 +29,9 @@ const RegenActionControls: React.FC<RegenActionControlsProps> = ({
         <div className="w-px h-6 bg-gray-600 hidden sm:block"></div>
         <button
           onClick={onRegenerateAgain}
-          disabled={true}
-          title={'AI Regeneration is coming soon!'}
-          className="flex items-center gap-2 px-3 py-2 sm:px-4 font-semibold text-white bg-purple-600 rounded-md shadow-lg opacity-50 cursor-not-allowed"
+          disabled={disabled}
+          title={'Regenerate selected frames again with the current style'}
+          className="flex items-center gap-2 px-3 py-2 sm:px-4 font-semibold text-white bg-purple-600 rounded-md shadow-lg hover:bg-purple-700 transform hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:scale-100"
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
             <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" />

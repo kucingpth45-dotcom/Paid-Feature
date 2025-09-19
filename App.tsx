@@ -201,11 +201,6 @@ export default function App() {
     const indices = indicesToProcess ?? originalFrames.map((_, i) => i);
     if (indices.length === 0) return;
 
-    // Temporarily disable functionality by showing an alert.
-    alert('The AI Regeneration feature is coming soon!');
-    return;
-
-    /*
     setIsLoading(true);
 
     let newFrames = [...regeneratedFrames];
@@ -262,7 +257,6 @@ export default function App() {
       setSelectedRegenFrames(new Set());
       setActiveSelection(null);
     }
-    */
   }, [originalFrames, regeneratedFrames, selectedStyle, aspectRatio]);
 
   const handleEditImage = async (currentSrc: string, prompt: string) => {
@@ -587,7 +581,12 @@ export default function App() {
                 isAllSelected={originalFrames.length > 0 && selectedFrames.size === originalFrames.length}
               />
               <div className="w-full h-px bg-gray-700"></div>
-              <Controls />
+              <Controls 
+                selectedStyle={selectedStyle}
+                onStyleChange={setSelectedStyle}
+                onRegenerate={() => handleRegenerate()}
+                disabled={isLoading}
+              />
             </>
           )}
 
