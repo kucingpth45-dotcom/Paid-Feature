@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback } from 'react';
 import { ArtStyle } from './types';
 import { regenerateImage, editImage, describeImage, translateText } from './services/geminiService';
@@ -39,7 +40,6 @@ export default function App() {
   
   const [blurThreshold, setBlurThreshold] = useState<number>(100);
   const [similarityThreshold, setSimilarityThreshold] = useState<number>(10);
-  const [maxFrames, setMaxFrames] = useState<number>(20);
 
   const [selectedFrames, setSelectedFrames] = useState<Set<number>>(new Set());
   const [selectedRegenFrames, setSelectedRegenFrames] = useState<Set<number>>(new Set());
@@ -89,9 +89,9 @@ export default function App() {
       const { frames, aspectRatio: videoAspectRatio } = await extractFrames(
         videoFile,
         2, // frames per second to check
-        maxFrames,
-        ({ current, total }) => {
-          setProgressMessage(`Extracting frames... (${current}/${total})`);
+        ({ current, total, accepted }) => {
+          const percentage = total > 0 ? Math.round((current / total) * 100) : 0;
+          setProgressMessage(`Analyzing video... ${percentage}% (${accepted} frames found)`);
         },
         { blurThreshold, similarityThreshold }
       );
@@ -107,7 +107,7 @@ export default function App() {
       setIsLoading(false);
       setProgressMessage('');
     }
-  }, [videoFile, blurThreshold, similarityThreshold, maxFrames]);
+  }, [videoFile, blurThreshold, similarityThreshold]);
 
   const handleFrameSelect = useCallback((index: number) => {
     setSelectedRegenFrames(new Set());
@@ -567,8 +567,6 @@ export default function App() {
                     onBlurChange={setBlurThreshold}
                     similarityThreshold={similarityThreshold}
                     onSimilarityChange={setSimilarityThreshold}
-                    maxFrames={maxFrames}
-                    onMaxFramesChange={setMaxFrames}
                     onReExtract={handleAutoExtract}
                     disabled={isLoading}
                 />

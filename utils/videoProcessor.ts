@@ -93,19 +93,17 @@ const areFramesSimilar = (
 
 
 /**
- * Extracts distinct, non-blurry frames from a video file.
+ * Extracts distinct, non-blurry frames from a video file by analyzing it frame by frame.
  * @param videoFile The video file to process.
- * @param framesPerSecond The number of frames to attempt to extract per second.
- * @param maxFrames The maximum number of frames to return.
- * @param onProgress Callback to report progress towards finding `maxFrames`.
+ * @param framesPerSecond The number of frames to analyze per second of video.
+ * @param onProgress Callback to report progress, including checked frames, total frames to check, and accepted unique frames.
  * @param options Object containing thresholds for blur and similarity.
  * @returns A promise that resolves to an object containing an array of base64 encoded frame images and the video's aspect ratio.
  */
 export const extractFrames = (
   videoFile: File,
   framesPerSecond: number,
-  maxFrames: number,
-  onProgress: (progress: { current: number, total: number }) => void,
+  onProgress: (progress: { current: number; total: number; accepted: number }) => void,
   options: { blurThreshold: number; similarityThreshold: number }
 ): Promise<{ frames: string[], aspectRatio: number }> => {
   return new Promise((resolve, reject) => {
@@ -131,11 +129,13 @@ export const extractFrames = (
       
       const duration = video.duration;
       const interval = 1 / framesPerSecond;
+      const totalFramesToCheck = Math.floor(duration / interval);
       let currentTime = 0;
       let acceptedFrameCount = 0;
+      let checkedFrameCount = 0;
 
       const processFrame = () => {
-        if (currentTime > duration || acceptedFrameCount >= maxFrames) {
+        if (currentTime > duration) {
           URL.revokeObjectURL(videoUrl);
           resolve({ frames, aspectRatio });
           return;
@@ -145,6 +145,7 @@ export const extractFrames = (
 
       video.addEventListener('seeked', () => {
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        checkedFrameCount++;
         
         const isBlurry = isFrameBlurry(context, canvas.width, canvas.height, options.blurThreshold);
         const isSimilar = areFramesSimilar(context, lastAcceptedFrameData, canvas.width, canvas.height, options.similarityThreshold);
@@ -153,8 +154,9 @@ export const extractFrames = (
           frames.push(canvas.toDataURL('image/jpeg'));
           lastAcceptedFrameData = context.getImageData(0, 0, canvas.width, canvas.height);
           acceptedFrameCount++;
-          onProgress({ current: acceptedFrameCount, total: maxFrames });
         }
+        
+        onProgress({ current: checkedFrameCount, total: totalFramesToCheck, accepted: acceptedFrameCount });
         
         currentTime += interval;
         processFrame();

@@ -1,3 +1,4 @@
+
 import React from 'react';
 
 interface ProcessingControlsProps {
@@ -5,8 +6,6 @@ interface ProcessingControlsProps {
   onBlurChange: (value: number) => void;
   similarityThreshold: number;
   onSimilarityChange: (value: number) => void;
-  maxFrames: number;
-  onMaxFramesChange: (value: number) => void;
   onReExtract: () => void;
   disabled: boolean;
 }
@@ -16,15 +15,13 @@ const ProcessingControls: React.FC<ProcessingControlsProps> = ({
   onBlurChange,
   similarityThreshold,
   onSimilarityChange,
-  maxFrames,
-  onMaxFramesChange,
   onReExtract,
   disabled
 }) => {
   return (
     <section>
       <h2 className="text-2xl font-semibold mb-4 text-center">Fine-Tune Frame Selection</h2>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start mb-6">
         {/* Blur Threshold Slider */}
         <div>
           <label htmlFor="blur-slider" className="block text-sm font-medium text-gray-300 mb-2">
@@ -63,26 +60,6 @@ const ProcessingControls: React.FC<ProcessingControlsProps> = ({
               className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer disabled:opacity-50"
             />
             <span className="font-mono text-purple-300 w-12 text-center">{similarityThreshold}</span>
-          </div>
-        </div>
-        {/* Max Frames Slider */}
-        <div>
-          <label htmlFor="max-frames-slider" className="block text-sm font-medium text-gray-300 mb-2">
-            Max Frames to Extract <span className="text-gray-400 font-normal">(Fewer is faster)</span>
-          </label>
-          <div className="flex items-center gap-4">
-            <input
-              id="max-frames-slider"
-              type="range"
-              min="5"
-              max="50"
-              step="1"
-              value={maxFrames}
-              onChange={(e) => onMaxFramesChange(Number(e.target.value))}
-              disabled={disabled}
-              className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer disabled:opacity-50"
-            />
-            <span className="font-mono text-purple-300 w-12 text-center">{maxFrames}</span>
           </div>
         </div>
       </div>
