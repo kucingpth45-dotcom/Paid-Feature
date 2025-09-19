@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback } from 'react';
-import { ArtStyle } from './types';
+import { ArtStyle, RegenerationModel } from './types';
 import { regenerateImage, editImage, describeImage, translateText } from './services/geminiService';
 import { extractFrames } from './utils/videoProcessor';
 import Header from './components/Header';
@@ -35,6 +35,7 @@ export default function App() {
   const [originalFrames, setOriginalFrames] = useState<OriginalFrame[]>([]);
   const [regeneratedFrames, setRegeneratedFrames] = useState<Array<RegeneratedFrame | null>>([]);
   const [selectedStyle, setSelectedStyle] = useState<ArtStyle>(ArtStyle.CARTOON);
+  const [regenerationModel, setRegenerationModel] = useState<RegenerationModel>('gemini');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [progressMessage, setProgressMessage] = useState<string>('');
   
@@ -203,31 +204,48 @@ export default function App() {
 
     setIsLoading(true);
 
-    let newFrames = [...regeneratedFrames];
-    if (newFrames.length < originalFrames.length) {
-        newFrames.length = originalFrames.length;
-        newFrames.fill(null, regeneratedFrames.length);
+    let newRegenFrames = [...regeneratedFrames];
+    if (newRegenFrames.length < originalFrames.length) {
+        newRegenFrames.length = originalFrames.length;
+        newRegenFrames.fill(null, regeneratedFrames.length);
     }
+    let newOriginals = [...originalFrames]; // For storing new prompts for Imagen
 
     try {
       for (let i = 0; i < indices.length; i++) {
         const frameIndex = indices[i];
         const progressIndicator = `(${i + 1} of ${indices.length})`;
+        
+        const base64Data = newOriginals[frameIndex].src.split(',')[1];
+        let promptForImagen: string | undefined;
 
-        setProgressMessage(`Re-imagining frame ${frameIndex + 1} ${progressIndicator} in ${selectedStyle} style...`);
+        // If using Imagen, we need a text prompt first.
+        if (regenerationModel === 'imagen') {
+            let existingPrompt = newOriginals[frameIndex].prompt;
+            if (!existingPrompt) {
+                setProgressMessage(`Describing frame ${frameIndex + 1} ${progressIndicator} for Imagen...`);
+                const description = await describeImage(base64Data);
+                existingPrompt = `Image Description:\n\n${description}`;
+                newOriginals[frameIndex] = { ...newOriginals[frameIndex], prompt: existingPrompt, translatedPrompt: undefined };
+                setOriginalFrames([...newOriginals]);
+            }
+            promptForImagen = existingPrompt;
+        }
+
+        setProgressMessage(`Re-imagining frame ${frameIndex + 1} ${progressIndicator} with ${regenerationModel}...`);
         
-        const base64Data = originalFrames[frameIndex].src.split(',')[1];
-        
-        const newFrameData = await regenerateImage(
-            base64Data, 
-            selectedStyle,
-            aspectRatio
-        );
+        const newFrameData = await regenerateImage({
+            model: regenerationModel,
+            style: selectedStyle,
+            aspectRatio,
+            base64Data,
+            prompt: promptForImagen,
+        });
 
         const newFrameSrc = `data:image/jpeg;base64,${newFrameData.image}`;
-        newFrames[frameIndex] = { src: newFrameSrc, prompt: newFrameData.prompt };
+        newRegenFrames[frameIndex] = { src: newFrameSrc, prompt: newFrameData.prompt };
 
-        setRegeneratedFrames([...newFrames]);
+        setRegeneratedFrames([...newRegenFrames]);
 
         if (i < indices.length - 1) {
           await new Promise(resolve => setTimeout(resolve, API_CALL_DELAY_MS));
@@ -240,7 +258,7 @@ export default function App() {
       setIsLoading(false);
       setProgressMessage('');
       
-      const finalFrames = [...newFrames]; 
+      const finalFrames = [...newRegenFrames]; 
       const regeneratedIndices = indicesToProcess ?? originalFrames.map((_, i) => i);
       
       if (regeneratedIndices.length > 0) {
@@ -257,7 +275,7 @@ export default function App() {
       setSelectedRegenFrames(new Set());
       setActiveSelection(null);
     }
-  }, [originalFrames, regeneratedFrames, selectedStyle, aspectRatio]);
+  }, [originalFrames, regeneratedFrames, selectedStyle, aspectRatio, regenerationModel]);
 
   const handleEditImage = async (currentSrc: string, prompt: string) => {
     const imageIndexInRegenFrames = regeneratedFrames.findIndex(frame => frame?.src === currentSrc);
@@ -585,6 +603,8 @@ export default function App() {
                 selectedStyle={selectedStyle}
                 onStyleChange={setSelectedStyle}
                 onRegenerate={() => handleRegenerate()}
+                regenerationModel={regenerationModel}
+                onModelChange={setRegenerationModel}
                 disabled={isLoading}
               />
             </>

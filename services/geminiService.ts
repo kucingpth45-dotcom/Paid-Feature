@@ -1,20 +1,17 @@
 import { GoogleGenAI, Modality, Part } from "@google/genai";
-import { ArtStyle } from "../types";
+import { ArtStyle, RegenerationModel } from "../types";
 
 /**
  * Creates and returns a new GoogleGenAI instance with the current API key.
  * @throws An error if the API key is not set.
  */
 const getAiClient = () => {
-  const apiKey = localStorage.getItem('gemini_api_key')
-                || import.meta.env.VITE_API_KEY;  // gunakan import.meta.env
-  if (!apiKey) {
-    throw new Error(
-      'Gemini API key is not set. Please configure VITE_API_KEY in Vercel or via the settings UI.'
-    );
-  }
-  return new GoogleGenAI({ apiKey });
-};
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) {
+      throw new Error('Gemini API key is not set. Please configure the API_KEY environment variable.');
+    }
+    return new GoogleGenAI({ apiKey });
+}
 
 /**
  * Translates a given text to a specified target language using Gemini.
@@ -67,118 +64,196 @@ export async function describeImage(base64Data: string): Promise<string> {
 }
 
 /**
- * Generates a new image using the Imagen model from a text prompt.
- * @param prompt The detailed text prompt for image generation.
- * @param aspectRatio The desired aspect ratio for the output image.
- * @returns A promise that resolves to the base64 encoded string of the generated image.
+ * Returns an instructional prompt for Gemini's image-to-image model.
+ * @param style The selected ArtStyle.
+ * @returns A string prompt for image-to-image regeneration.
  */
-async function generateImageWithImagen(prompt: string, aspectRatio: number): Promise<string> {
-    const ai = getAiClient();
-    // Determine the closest aspect ratio string supported by the Imagen API
-    let apiAspectRatio: '1:1' | '16:9' | '9:16' | '4:3' | '3:4' = '1:1';
-    if (aspectRatio) {
-        const ratios = {
-            '16:9': 16 / 9,
-            '9:16': 9 / 16,
-            '4:3': 4 / 3,
-            '3:4': 3 / 4,
-            '1:1': 1,
-        };
-        
-        apiAspectRatio = (Object.keys(ratios) as Array<keyof typeof ratios>).reduce((prev, curr) => 
-            Math.abs(ratios[curr] - aspectRatio) < Math.abs(ratios[prev] - aspectRatio) ? curr : prev
-        );
+const getGeminiInstructionalPrompt = (style: ArtStyle): string => {
+    switch (style) {
+        case ArtStyle.REALISTIC:
+            return "Recreate this image as an ultra-realistic, photorealistic, high-detail photograph. It should look like it was shot with a professional DSLR camera, with sharp focus and intricate details.";
+        case ArtStyle.CARTOON:
+            return "Recreate this image as a vibrant, colorful, bold-lined cartoon illustration in a playful style. Use cel-shading, expressive characters, and clean lines.";
+        case ArtStyle.THREE_D_PIXAR:
+            return "Recreate this image in the style of a modern 3D animated film, like those from Pixar. It should have soft lighting, detailed textures, and expressive, rounded characters with a friendly and appealing look.";
+        case ArtStyle.ANIME:
+            return "Recreate this image as a beautiful Japanese anime scene, in the style of a critically acclaimed animation studio. It should have detailed background art, cel-shaded characters, and cinematic anime lighting.";
+        case ArtStyle.VINTAGE_PHOTO:
+            return "Recreate this image as an authentic-looking vintage sepia photograph from the early 20th century. It should have a grainy texture, faded tones, and soft focus to capture a timeless moment.";
+        case ArtStyle.CLAYMATION:
+            return "Recreate this image as a charming claymation stop-motion scene with a handcrafted look. The models should be textured with visible fingerprints in the clay, and have whimsical lighting.";
+        case ArtStyle.FANTASY_ART:
+            return "Recreate this image as an epic digital fantasy art painting. It needs ethereal lighting, intricate details, and a mythical atmosphere, in the style of a high-fantasy book cover.";
+        case ArtStyle.NEON_PUNK:
+            return "Recreate this image as a neon-drenched, cyberpunk cityscape scene. It should have glowing neon lights, rainy streets with reflections, high-tech gadgets, and a dystopian 'neon punk' aesthetic.";
+        default:
+            return `Recreate this image in the style of a high-detail, cinematic image with the theme of '${style}'.`;
     }
-    
-    const response = await ai.models.generateImages({
-        model: 'imagen-4.0-generate-001',
-        prompt: prompt,
-        config: {
-            numberOfImages: 1,
-            outputMimeType: 'image/jpeg',
-            aspectRatio: apiAspectRatio,
-        },
-    });
-    
-    if (response.generatedImages && response.generatedImages.length > 0) {
-        return response.generatedImages[0].image.imageBytes;
+};
+
+/**
+ * Returns a stylistic suffix for Imagen's text-to-image model.
+ * @param style The selected ArtStyle.
+ * @returns A string suffix to append to the main prompt.
+ */
+const getImagenStyleSuffix = (style: ArtStyle): string => {
+    switch (style) {
+        case ArtStyle.REALISTIC: return ', ultra-realistic, photorealistic, 8k, sharp focus, professional DSLR photo.';
+        case ArtStyle.CARTOON: return ', vibrant cartoon illustration, bold lines, cel-shaded, playful style.';
+        case ArtStyle.THREE_D_PIXAR: return ', in the style of a 3D Pixar animated film, soft lighting, detailed textures, expressive characters.';
+        case ArtStyle.ANIME: return ', beautiful Japanese anime scene, style of a top animation studio, cinematic anime lighting.';
+        case ArtStyle.VINTAGE_PHOTO: return ', authentic vintage sepia photograph, grainy texture, faded tones, early 20th century.';
+        case ArtStyle.CLAYMATION: return ', charming claymation stop-motion scene, handcrafted look, visible fingerprints in the clay.';
+        case ArtStyle.FANTASY_ART: return ', epic digital fantasy art painting, ethereal lighting, intricate details, mythical atmosphere.';
+        case ArtStyle.NEON_PUNK: return ', neon-drenched cyberpunk cityscape, glowing neon lights, rainy streets, dystopian aesthetic.';
+        default: return `, in the style of ${style}.`;
     }
-    
-    throw new Error('Imagen failed to generate an image.');
 }
 
 /**
- * Returns a detailed prompt prefix based on the selected art style.
- * @param style The selected ArtStyle.
- * @returns A string to be prepended to the image description.
+ * Maps a float aspect ratio to the closest supported string value for Imagen.
+ * @param ratio The numeric aspect ratio.
+ * @returns A supported aspect ratio string ('1:1', '3:4', '4:3', '9:16', '16:9').
  */
-const getStylePromptPrefix = (style: ArtStyle): string => {
-    switch (style) {
-        case ArtStyle.REALISTIC:
-            return "An ultra-realistic, photorealistic, high-detail photograph. Shot with a professional DSLR camera, sharp focus, intricate details. The image depicts:";
-        case ArtStyle.CARTOON:
-            return "A vibrant, colorful, bold-lined cartoon illustration in a playful style. Cel-shaded with expressive characters and clean lines. The scene is:";
-        case ArtStyle.THREE_D_PIXEL:
-            return "A detailed 3D pixel art scene, voxel art, isometric view. Retro gaming aesthetic with a vibrant color palette, blocky and charming. The scene shows:";
-        case ArtStyle.ANIME:
-            return "A beautiful Japanese anime scene in the style of a critically acclaimed animation studio. Detailed background art, cel-shaded characters, and cinematic anime lighting, depicting:";
-        case ArtStyle.VINTAGE_PHOTO:
-            return "An authentic-looking vintage sepia photograph from the early 20th century. Grainy texture, faded tones, and soft focus, capturing a timeless moment of:";
-        case ArtStyle.CLAYMATION:
-            return "A charming claymation stop-motion scene with a handcrafted look. Textured models with visible fingerprints in the clay and whimsical lighting, featuring:";
-        case ArtStyle.FANTASY_ART:
-            return "An epic digital fantasy art painting. Ethereal lighting, intricate details, and a mythical atmosphere, in the style of a high-fantasy book cover, showing:";
-        case ArtStyle.NEON_PUNK:
-            return "A neon-drenched, cyberpunk cityscape scene. Glowing neon lights, rainy streets with reflections, high-tech gadgets, and a dystopian 'neon punk' aesthetic. The scene features:";
-        default:
-            // A sensible fallback
-            return `A high-detail, cinematic image in the style of '${style}'. The image depicts:`;
+const mapAspectRatioToImagen = (ratio: number): '1:1' | '3:4' | '4:3' | '9:16' | '16:9' => {
+  const supportedRatios = {
+    '1:1': 1,
+    '4:3': 4 / 3,
+    '3:4': 3 / 4,
+    '16:9': 16 / 9,
+    '9:16': 9 / 16,
+  };
+
+  let closest = '1:1' as keyof typeof supportedRatios;
+  let minDiff = Math.abs(ratio - supportedRatios[closest]);
+
+  for (const key in supportedRatios) {
+    const typedKey = key as keyof typeof supportedRatios;
+    const diff = Math.abs(ratio - supportedRatios[typedKey]);
+    if (diff < minDiff) {
+      minDiff = diff;
+      closest = typedKey;
     }
+  }
+  return closest;
 };
 
 
 /**
- * Regenerates an image by re-imagining it with Imagen.
+ * Regenerates an image using Gemini's image-to-image capabilities.
  * @param base64Data The base64 encoded string of the source image.
  * @param style The artistic style to apply.
- * @param aspectRatio The original aspect ratio of the video frame.
+ * @returns A promise resolving to the new image data and prompt.
+ */
+async function regenerateImageWithGemini(
+  base64Data: string, 
+  style: ArtStyle, 
+): Promise<{ image: string; prompt: string; }> {
+    const ai = getAiClient();
+    const finalPrompt = getGeminiInstructionalPrompt(style);
+    
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash-image-preview',
+      contents: {
+        parts: [
+          { inlineData: { data: base64Data, mimeType: 'image/jpeg' } },
+          { text: finalPrompt },
+        ],
+      },
+      config: {
+        responseModalities: [Modality.IMAGE, Modality.TEXT],
+      },
+    });
+
+    const candidate = response.candidates?.[0];
+
+    if (candidate?.content?.parts) {
+      for (const part of candidate.content.parts) {
+        if (part.inlineData) {
+          return { image: part.inlineData.data, prompt: finalPrompt };
+        }
+      }
+    }
+    
+    if (candidate?.finishReason === 'SAFETY' || candidate?.finishReason === 'RECITATION' || response.promptFeedback?.blockReason) {
+        throw new Error(`Image regeneration was blocked. Reason: ${candidate?.finishReason || response.promptFeedback?.blockReason}. Please try a different style or frame.`);
+    }
+
+    throw new Error('No image was generated by Gemini.');
+}
+
+/**
+ * Generates an image using Imagen's text-to-image capabilities.
+ * @param basePrompt The detailed description of the image.
+ * @param style The artistic style to apply.
+ * @param aspectRatio The target aspect ratio.
+ * @returns A promise resolving to the new image data and prompt.
+ */
+async function generateImageWithImagen(
+    basePrompt: string,
+    style: ArtStyle,
+    aspectRatio: number
+): Promise<{ image: string; prompt: string }> {
+    const ai = getAiClient();
+    const finalPrompt = `${basePrompt}${getImagenStyleSuffix(style)}`;
+
+    const response = await ai.models.generateImages({
+        model: 'imagen-4.0-generate-001',
+        prompt: finalPrompt,
+        config: {
+          numberOfImages: 1,
+          outputMimeType: 'image/jpeg',
+          aspectRatio: mapAspectRatioToImagen(aspectRatio),
+        },
+    });
+
+    const generatedImage = response.generatedImages?.[0];
+    if (generatedImage?.image?.imageBytes) {
+        return { image: generatedImage.image.imageBytes, prompt: finalPrompt };
+    }
+    
+    // Fix: Correctly access promptFeedback from the top-level response for generateImages.
+    if (response.promptFeedback?.blockReason) {
+        throw new Error(`Image generation was blocked. Reason: ${response.promptFeedback.blockReason}. Please try a different frame.`);
+    }
+    
+    throw new Error('No image was generated by Imagen.');
+}
+
+
+interface RegenerateOptions {
+  model: RegenerationModel;
+  style: ArtStyle;
+  aspectRatio: number;
+  base64Data?: string;
+  prompt?: string;
+}
+
+/**
+ * Regenerates an image using the selected AI model (Gemini or Imagen).
+ * This function acts as a dispatcher to the appropriate model-specific function.
+ * @param options The regeneration options, including model, style, and source data.
  * @returns A promise that resolves to an object containing the new image and the prompt used.
  */
 export const regenerateImage = async (
-  base64Data: string, 
-  style: ArtStyle, 
-  aspectRatio: number,
+  options: RegenerateOptions
 ): Promise<{ image: string; prompt: string; }> => {
-  try {
-    // Describe the image first to get a context-rich prompt.
-    const description = await describeImage(base64Data);
-    // Get the highly specific style prefix.
-    const stylePrefix = getStylePromptPrefix(style);
-    
-    // Enforce a maximum prompt length of 500 characters.
-    const MAX_PROMPT_LENGTH = 500;
-    const remainingLength = MAX_PROMPT_LENGTH - stylePrefix.length - 1; // -1 for the space separator
+  const { model, style, aspectRatio, base64Data, prompt } = options;
 
-    let truncatedDescription = description;
-    if (remainingLength > 0 && description.length > remainingLength) {
-        truncatedDescription = description.substring(0, remainingLength).trim();
-        // Go back to the last full word to avoid cutting words in half.
-        const lastSpaceIndex = truncatedDescription.lastIndexOf(' ');
-        if (lastSpaceIndex !== -1) {
-            truncatedDescription = truncatedDescription.substring(0, lastSpaceIndex);
+  try {
+    if (model === 'imagen') {
+        if (!prompt) {
+            throw new Error('A text prompt is required for the Imagen model.');
         }
-    } else if (remainingLength <= 0) {
-        // If the prefix itself is too long, we can't add a description.
-        truncatedDescription = "";
+        return await generateImageWithImagen(prompt, style, aspectRatio);
+    } else { // 'gemini'
+        if (!base64Data) {
+            throw new Error('Base64 image data is required for the Gemini model.');
+        }
+        return await regenerateImageWithGemini(base64Data, style);
     }
-    
-    // Combine them for a powerful final prompt.
-    const finalPrompt = `${stylePrefix} ${truncatedDescription}`.trim();
-    
-    const image = await generateImageWithImagen(finalPrompt, aspectRatio);
-    return { image, prompt: finalPrompt };
   } catch (error) {
-    console.error("Error calling Gemini API:", error);
+    console.error(`Error calling ${model} API for regeneration:`, error);
     if (error instanceof Error) {
         if (error.message.includes('API key not valid')) {
             throw new Error('Your Gemini API key is not valid. Please check your configuration.');
@@ -186,13 +261,15 @@ export const regenerateImage = async (
         if (error.message.includes('429') || error.message.includes('RESOURCE_EXHAUSTED')) {
             throw new Error('API rate limit or quota exceeded. Please try again later.');
         }
+         // Rethrow specific "blocked" error messages from underlying functions
         if (error.message.includes('blocked')) {
-            throw new Error('Image generation was blocked due to safety policies. Please try a different frame.');
+            throw error;
         }
     }
-    throw new Error('Failed to regenerate image with Gemini. Check the console for details.');
+    throw new Error(`Failed to regenerate image with ${model}. Check the console for details.`);
   }
 };
+
 
 /**
  * Edits an image based on a textual prompt using Gemini.
